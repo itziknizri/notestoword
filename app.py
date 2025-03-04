@@ -16,7 +16,7 @@ class WordCommentsExtractor:
         self.root.title("ממיר הערות מוורד לאקסל")
         self.root.geometry("800x600")
         
-        # הגדרת התמיכה ב-RTL עבור עברית
+        # הגדרת התמיכה ב-RTL עבור עברית - שיפור משמעותי
         self.configure_rtl_support()
         
         # ערכים שנשמור
@@ -30,6 +30,7 @@ class WordCommentsExtractor:
         self.style_widgets()
     
     def configure_rtl_support(self):
+        """הגדרת תמיכה מלאה ב-RTL"""
         # יצירת פונטים משופרים
         default_font = font.nametofont("TkDefaultFont")
         default_font.configure(family="Segoe UI", size=10)
@@ -38,9 +39,20 @@ class WordCommentsExtractor:
         self.root.tk.call('package', 'require', 'Ttk')
         
         try:
-            # לא כל מערכות ההפעלה תומכות ב-RTL באופן מלא
+            # הגדרות RTL מתקדמות
             self.root.tk.call('tk', 'scaling', 1.0)
-            self.root.tk.call('ttk::style', 'configure', '.', 'justify', 'right')
+            # הפיכת כיוון הטקסט לימין-לשמאל
+            self.root.tk.call('tk', 'scaling', 1.0)
+            self.root.tk.call('option', 'add', '*TCombobox*Listbox.font', default_font)
+            self.root.tk.call('option', 'add', '*TCombobox*Listbox.justify', 'right')
+            
+            # הגדרת כיוון למחלקות ספציפיות
+            ttk_style = ttk.Style()
+            ttk_style.configure('TNotebook.Tab', justify='right')
+            ttk_style.configure('TButton', justify='right')
+            ttk_style.configure('TLabel', justify='right')
+            ttk_style.configure('Treeview', justify='right')
+            ttk_style.configure('Treeview.Heading', justify='right')
         except tk.TclError:
             pass
     
@@ -50,6 +62,12 @@ class WordCommentsExtractor:
         style.configure("TButton", font=("Segoe UI", 10))
         style.configure("TLabel", font=("Segoe UI", 10))
         style.configure("Header.TLabel", font=("Segoe UI", 16, "bold"))
+        style.configure("Treeview", font=("Segoe UI", 9))
+        style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"))
+        
+        # הגדרת כיוון טקסט לעברית
+        style.configure("TButton", justify="right")
+        style.configure("TLabel", justify="right")
         
         # הגדרת צבעים
         self.root.configure(bg="#f0f0f0")
@@ -60,18 +78,19 @@ class WordCommentsExtractor:
         main_frame.pack(fill="both", expand=True)
         
         # כותרת
-        header = ttk.Label(main_frame, text="ממיר הערות מקובץ וורד לאקסל", style="Header.TLabel")
+        header = ttk.Label(main_frame, text="ממיר הערות מקובץ וורד לאקסל", style="Header.TLabel", anchor="center")
         header.pack(pady=20)
         
         # מסגרת לבחירת קובץ
         file_frame = ttk.Frame(main_frame)
         file_frame.pack(fill="x", pady=10)
         
-        self.file_label = ttk.Label(file_frame, text="לא נבחר קובץ", width=60)
-        self.file_label.pack(side="right", padx=5)
-        
+        # שינוי סדר הרכיבים לתמיכה בRTL
         select_btn = ttk.Button(file_frame, text="בחר קובץ וורד", command=self.select_file)
-        select_btn.pack(side="left", padx=5)
+        select_btn.pack(side="right", padx=5)
+        
+        self.file_label = ttk.Label(file_frame, text="לא נבחר קובץ", width=60, anchor="e")
+        self.file_label.pack(side="left", padx=5, fill="x", expand=True)
         
         # כפתור עיבוד
         process_btn = ttk.Button(main_frame, text="עבד את הקובץ", command=self.process_file)
@@ -83,15 +102,16 @@ class WordCommentsExtractor:
         
         self.status_var = tk.StringVar()
         self.status_var.set("מוכן")
-        status_label = ttk.Label(status_frame, textvariable=self.status_var)
-        status_label.pack(pady=5)
+        status_label = ttk.Label(status_frame, textvariable=self.status_var, anchor="e")
+        status_label.pack(pady=5, fill="x")
         
         # מסגרת לתצוגת תוצאות
         results_frame = ttk.Frame(main_frame)
         results_frame.pack(fill="both", expand=True, pady=10)
         
-        # טבלת תוצאות - נשנה כדי להציג עמודות רבות יותר
-        columns = ("הערה", "כותב", "עמוד", "תאריך", "תגובה 1", "כותב תגובה 1", "תגובה 2", "כותב תגובה 2")
+        # טבלת תוצאות - תמיכה בשרשור נכון ואינדקס
+        columns = ("#", "הערה", "כותב", "עמוד", "תאריך", "תגובה 1", "כותב תגובה 1", "תאריך 1", 
+                  "תגובה 2", "כותב תגובה 2", "תאריך 2", "תגובה 3", "כותב תגובה 3", "תאריך 3")
         self.result_tree = ttk.Treeview(results_frame, columns=columns, show="headings")
         
         # הגדרת כותרות
@@ -99,42 +119,44 @@ class WordCommentsExtractor:
             self.result_tree.heading(col, text=col)
         
         # הגדרת רוחב עמודות
-        self.result_tree.column("הערה", width=250)
-        self.result_tree.column("כותב", width=80)
-        self.result_tree.column("עמוד", width=50)
-        self.result_tree.column("תאריך", width=120)
-        self.result_tree.column("תגובה 1", width=200)
-        self.result_tree.column("כותב תגובה 1", width=80)
-        self.result_tree.column("תגובה 2", width=200)
-        self.result_tree.column("כותב תגובה 2", width=80)
+        self.result_tree.column("#", width=40, anchor="e")
+        self.result_tree.column("הערה", width=200, anchor="e")
+        self.result_tree.column("כותב", width=80, anchor="e")
+        self.result_tree.column("עמוד", width=50, anchor="e")
+        self.result_tree.column("תאריך", width=120, anchor="e")
+        self.result_tree.column("תגובה 1", width=200, anchor="e")
+        self.result_tree.column("כותב תגובה 1", width=80, anchor="e")
+        self.result_tree.column("תאריך 1", width=120, anchor="e")
+        self.result_tree.column("תגובה 2", width=200, anchor="e")
+        self.result_tree.column("כותב תגובה 2", width=80, anchor="e")
+        self.result_tree.column("תאריך 2", width=120, anchor="e")
+        self.result_tree.column("תגובה 3", width=200, anchor="e")
+        self.result_tree.column("כותב תגובה 3", width=80, anchor="e")
+        self.result_tree.column("תאריך 3", width=120, anchor="e")
         
         # גלילה אופקית ואנכית
         x_scrollbar = ttk.Scrollbar(results_frame, orient="horizontal", command=self.result_tree.xview)
         y_scrollbar = ttk.Scrollbar(results_frame, orient="vertical", command=self.result_tree.yview)
         self.result_tree.configure(xscrollcommand=x_scrollbar.set, yscrollcommand=y_scrollbar.set)
         
-        # מיקום
-        self.result_tree.grid(row=0, column=0, sticky="nsew")
-        y_scrollbar.grid(row=0, column=1, sticky="ns")
-        x_scrollbar.grid(row=1, column=0, sticky="ew")
+        # מיקום (שימוש ב-pack במקום grid לתמיכה טובה יותר בRTL)
+        y_scrollbar.pack(side="right", fill="y")
+        x_scrollbar.pack(side="bottom", fill="x")
+        self.result_tree.pack(side="left", fill="both", expand=True)
         
-        # הגדרת גדילה
-        results_frame.grid_rowconfigure(0, weight=1)
-        results_frame.grid_columnconfigure(0, weight=1)
+        # כפתורי ייצוא ויציאה
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill="x", pady=10)
         
-        # כפתור ייצוא
-        export_frame = ttk.Frame(main_frame)
-        export_frame.pack(fill="x", pady=10)
+        # שימוש בLTR לכפתורים בשורה התחתונה
+        export_btn = ttk.Button(button_frame, text="ייצא לאקסל", command=self.export_to_excel)
+        export_btn.pack(side="right", padx=5)
         
-        export_btn = ttk.Button(export_frame, text="ייצא לאקסל", command=self.export_to_excel)
-        export_btn.pack(side="left", padx=5)
+        exit_btn = ttk.Button(button_frame, text="יציאה", command=self.root.quit)
+        exit_btn.pack(side="left", padx=5)
         
-        # כפתור יציאה
-        exit_btn = ttk.Button(export_frame, text="יציאה", command=self.root.quit)
-        exit_btn.pack(side="right", padx=5)
-        
-        # מידע
-        info_label = ttk.Label(main_frame, text="פותח עם ❤️ לטובת ייצוא הערות מקובצי וורד", foreground="gray")
+        # מידע - כולל קרדיט מבוקש
+        info_label = ttk.Label(main_frame, text="פותח ע\"י יצחק נזרי", foreground="gray", anchor="center")
         info_label.pack(pady=5)
     
     def select_file(self):
@@ -164,18 +186,27 @@ class WordCommentsExtractor:
             comments = self.extract_comments_from_docx(self.docx_path)
             
             # הצגת התוצאות בטבלה
-            for idx, comment in enumerate(comments):
+            for idx, comment in enumerate(comments, 1):
                 values = [
+                    idx,  # אינדקס מספרי להערה
                     self.truncate_text(comment.get('הערה', ''), 50),
                     comment.get('כותב', ''),
                     comment.get('עמוד', ''),
                     comment.get('תאריך', ''),
                     self.truncate_text(comment.get('תגובה 1', ''), 50),
                     comment.get('כותב תגובה 1', ''),
+                    comment.get('תאריך תגובה 1', ''),
                     self.truncate_text(comment.get('תגובה 2', ''), 50),
-                    comment.get('כותב תגובה 2', '')
+                    comment.get('כותב תגובה 2', ''),
+                    comment.get('תאריך תגובה 2', ''),
+                    self.truncate_text(comment.get('תגובה 3', ''), 50),
+                    comment.get('כותב תגובה 3', ''),
+                    comment.get('תאריך תגובה 3', '')
                 ]
                 self.result_tree.insert("", "end", values=values)
+                
+                # שמירת האינדקס בנתונים
+                comment['אינדקס'] = idx
             
             self.comments_data = comments
             
@@ -196,7 +227,7 @@ class WordCommentsExtractor:
     
     def extract_comments_from_docx(self, docx_path):
         """
-        מחלץ הערות ותגובות מקובץ וורד
+        מחלץ הערות ותגובות מקובץ וורד בצורה משופרת
         """
         # מידע שנרצה לשמור לגבי כל הערה
         comments_data = []
@@ -205,23 +236,17 @@ class WordCommentsExtractor:
             # קריאת המסמך באמצעות python-docx
             doc = Document(docx_path)
             
-            # אלגוריתם משופר לחישוב מספרי עמודים
-            # נחשב את ממוצע מספר התווים בעמוד
+            # אלגוריתם משופר יותר לחישוב מספרי עמודים
+            # נחשב את ממוצע מספר התווים בעמוד (הערכה טובה יותר)
             total_chars = sum(len(p.text) for p in doc.paragraphs)
-            approx_pages = max(1, total_chars // 3000)  # הערכה ראשונית: 3000 תווים לעמוד
-            chars_per_page = total_chars / approx_pages
             
-            # יצירת מיפוי של פסקאות לעמודים
-            para_to_page = {}
-            current_page = 1
-            char_count = 0
+            # אומדן מספר העמודים באמצעות גישה מתקדמת יותר
+            # ממוצע של כ-1800 תווים לעמוד (מקובל לתכנון עמודים)
+            chars_per_page_estimate = 1800
+            estimated_total_pages = max(1, total_chars // chars_per_page_estimate)
             
-            for i, para in enumerate(doc.paragraphs):
-                char_count += len(para.text)
-                para_to_page[i] = current_page
-                if char_count >= chars_per_page:
-                    current_page += 1
-                    char_count = 0
+            # יצירת מיפוי של זמן יחסי בטקסט למספר העמוד
+            page_mapping = {}
             
             # קובץ וורד הוא למעשה קובץ ZIP שמכיל מסמכי XML
             with zipfile.ZipFile(docx_path, 'r') as zip_ref:
@@ -231,8 +256,12 @@ class WordCommentsExtractor:
                 if not comment_files:
                     return []
                 
+                # איסוף מידע על מיקום מותאם הערות (במידת האפשר)
+                comment_locations = self.get_comment_locations(doc)
+                
                 # שמירת מידע על כל ההערות והתגובות
                 all_comments = []
+                comment_threads = {}  # מילון לשמירת שרשורי הערות
                 
                 # קריאת קובץ XML של ההערות
                 for comment_file in comment_files:
@@ -253,59 +282,107 @@ class WordCommentsExtractor:
                         
                         # טקסט ההערה
                         comment_text_elements = comment.findall('.//w:t', ns)
-                        comment_text = "".join([elem.text for elem in comment_text_elements if elem.text])
+                        comment_text = "".join([elem.text if elem.text else "" for elem in comment_text_elements])
                         
                         # חיפוש תגובות (הערות מקושרות)
                         parent_id = comment.get(f"{{{ns['w']}}}parentId")
                         
-                        # מציאת מיקום ההערה (משוער)
-                        # בהערכה פשוטה נשים את ההערה בעמוד העוקב אחרי העמוד הקודם לקבל פיזור
-                        page = current_page // 2 if parent_id is None else 0
+                        # חישוב מספר העמוד
+                        comment_pos = comment_locations.get(comment_id, 0)
+                        relative_pos = min(1.0, max(0.0, comment_pos / total_chars if total_chars > 0 else 0))
+                        page = max(1, min(estimated_total_pages, int(relative_pos * estimated_total_pages) + 1))
                         
                         # הוספת מידע ההערה לרשימה
-                        all_comments.append({
+                        comment_info = {
                             'id': comment_id,
                             'parent_id': parent_id,
                             'author': author,
                             'date': date_formatted,
                             'text': comment_text,
                             'page': page
-                        })
-                
-                # ארגון ההערות והתגובות בצורה טובה יותר
-                # נשמור הערות עיקריות ונצרף אליהן את התגובות כעמודות
-                parent_comments = []
-                
-                # מיפוי של הערות לפי ID
-                comments_by_id = {c['id']: c for c in all_comments}
-                
-                # קבלת כל ההערות הראשיות (ללא parent_id)
-                for comment in all_comments:
-                    if comment['parent_id'] is None:
-                        # יצירת שורה חדשה לאקסל
-                        row = {
-                            'הערה': comment['text'],
-                            'כותב': comment['author'],
-                            'עמוד': para_to_page.get(min(3, len(para_to_page)-1), 1),  # חישוב משופר לעמוד
-                            'תאריך': comment['date']
                         }
                         
-                        # חיפוש תגובות להערה זו
-                        replies = [c for c in all_comments if c['parent_id'] == comment['id']]
+                        all_comments.append(comment_info)
                         
-                        # הוספת תגובות כעמודות נוספות
-                        for i, reply in enumerate(replies, 1):
+                        # ארגון ההערות בשרשורים
+                        if parent_id is None:
+                            # זו הערה ראשית
+                            if comment_id not in comment_threads:
+                                comment_threads[comment_id] = {
+                                    'main': comment_info,
+                                    'replies': []
+                                }
+                        else:
+                            # זו תגובה
+                            if parent_id not in comment_threads:
+                                comment_threads[parent_id] = {
+                                    'main': None,
+                                    'replies': [comment_info]
+                                }
+                            else:
+                                comment_threads[parent_id]['replies'].append(comment_info)
+                
+                # ארגון ההערות בפורמט הסופי לתצוגה וייצוא
+                result_comments = []
+                
+                for thread_id, thread in comment_threads.items():
+                    if thread['main'] is None:
+                        # במקרה נדיר שאין הערה ראשית
+                        continue
+                    
+                    # מיון התגובות לפי תאריך
+                    replies = sorted(thread['replies'], key=lambda x: x.get('date', ''))
+                    
+                    # יצירת שורה חדשה לאקסל
+                    row = {
+                        'הערה': thread['main']['text'],
+                        'כותב': thread['main']['author'],
+                        'עמוד': thread['main']['page'],
+                        'תאריך': thread['main']['date']
+                    }
+                    
+                    # הוספת תגובות כעמודות
+                    for i, reply in enumerate(replies, 1):
+                        if i <= 10:  # מוגבל ל-10 תגובות לכל היותר
                             row[f'תגובה {i}'] = reply['text']
                             row[f'כותב תגובה {i}'] = reply['author']
                             row[f'תאריך תגובה {i}'] = reply['date']
-                        
-                        parent_comments.append(row)
+                    
+                    result_comments.append(row)
                 
-                return parent_comments
+                # מיון לפי מספר עמוד
+                result_comments.sort(key=lambda x: (x.get('עמוד', 0), x.get('תאריך', '')))
+                
+                return result_comments
         
         except Exception as e:
             messagebox.showerror("שגיאה", f"אירעה שגיאה בחילוץ ההערות:\n{str(e)}")
             return []
+    
+    def get_comment_locations(self, doc):
+        """
+        מנסה לאתר את המיקום של כל הערה בטקסט
+        """
+        comment_locations = {}
+        char_position = 0
+        
+        # נעבור על כל הפסקאות
+        for paragraph in doc.paragraphs:
+            # נוסיף את אורך הטקסט הנוכחי
+            paragraph_text_length = len(paragraph.text)
+            
+            # נבדוק אם יש הערות בפסקה
+            for run in paragraph.runs:
+                if hasattr(run, '_element') and run._element.xpath('.//w:commentReference'):
+                    for comment_ref in run._element.xpath('.//w:commentReference'):
+                        comment_id = comment_ref.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id')
+                        if comment_id:
+                            # שמירת המיקום המוערך של ההערה
+                            comment_locations[comment_id] = char_position
+            
+            char_position += paragraph_text_length
+        
+        return comment_locations
     
     def format_date(self, date_str):
         """פורמט תאריכים בצורה קריאה"""
@@ -339,7 +416,19 @@ class WordCommentsExtractor:
             # יצירת DataFrame
             df = pd.DataFrame(self.comments_data)
             
-            # שמירה לאקסל
+            # סידור העמודות בסדר הנכון
+            columns_order = ['אינדקס', 'הערה', 'כותב', 'עמוד', 'תאריך']
+            
+            # הוספת עמודות תגובה
+            for i in range(1, 11):  # תמיכה בעד 10 תגובות
+                reply_cols = [f'תגובה {i}', f'כותב תגובה {i}', f'תאריך תגובה {i}']
+                columns_order.extend([col for col in reply_cols if col in df.columns])
+            
+            # סינון עמודות קיימות בדאטה
+            final_columns = [col for col in columns_order if col in df.columns]
+            
+            # שמירה לאקסל עם סדר העמודות הנכון
+            df = df[final_columns]
             df.to_excel(excel_path, index=False, engine='openpyxl')
             
             messagebox.showinfo("הצלחה", f"הקובץ נשמר בהצלחה:\n{excel_path}")
@@ -356,6 +445,13 @@ class WordCommentsExtractor:
 
 def main():
     root = tk.Tk()
+    # הגדרת RTL כברירת מחדל
+    root.tk.call('tk', 'windowingsystem')  # נדרש לפני שימוש ב-tk_strictMotif
+    # הגדרות לתמיכה מלאה בRTL
+    try:
+        root.tk_strictMotif(False)
+    except:
+        pass
     app = WordCommentsExtractor(root)
     root.mainloop()
 
