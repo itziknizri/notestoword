@@ -1,192 +1,273 @@
-import streamlit as st
+import tkinter as tk
+from tkinter import filedialog, ttk, messagebox
 from docx import Document
 import zipfile
 import xml.etree.ElementTree as ET
 import pandas as pd
-import io
 import re
-import tempfile
 import os
+import tempfile
+from datetime import datetime
 
-st.set_page_config(page_title="ממיר הערות וורד לאקסל", page_icon="📝")
-
-st.title("ממיר הערות מקובץ וורד לאקסל")
-st.markdown("אפליקציה זו ממירה את כל ההערות והתגובות מקובץ וורד לקובץ אקסל מסודר.")
-
-def extract_comments_from_docx(docx_file):
-    """
-    מחלץ הערות ותגובות מקובץ וורד
+class WordCommentsExtractor:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("ממיר הערות מוורד לאקסל")
+        self.root.geometry("600x500")
+        
+        # ערכים שנשמור
+        self.docx_path = None
+        self.comments_data = []
+        
+        # יצירת ממשק
+        self.create_widgets()
     
-    :param docx_file: קובץ וורד (כאובייקט BytesIO)
-    :return: רשימה של הערות ותגובות
-    """
-    # מידע שנרצה לשמור לגבי כל הערה
-    comments_data = []
+    def create_widgets(self):
+        # כותרת
+        header = tk.Label(self.root, text="ממיר הערות מקובץ וורד לאקסל", font=("Arial", 16, "bold"))
+        header.pack(pady=20)
+        
+        # מסגרת לבחירת קובץ
+        file_frame = tk.Frame(self.root)
+        file_frame.pack(fill="x", padx=20, pady=10)
+        
+        self.file_label = tk.Label(file_frame, text="לא נבחר קובץ", width=40, anchor="w")
+        self.file_label.pack(side="left", padx=5)
+        
+        select_btn = tk.Button(file_frame, text="בחר קובץ וורד", command=self.select_file)
+        select_btn.pack(side="right", padx=5)
+        
+        # כפתור עיבוד
+        process_btn = tk.Button(self.root, text="עבד את הקובץ", command=self.process_file, height=2)
+        process_btn.pack(pady=20)
+        
+        # אזור סטטוס
+        self.status_var = tk.StringVar()
+        self.status_var.set("מוכן")
+        status_label = tk.Label(self.root, textvariable=self.status_var, fg="blue")
+        status_label.pack(pady=5)
+        
+        # מסגרת לתצוגת תוצאות
+        results_frame = tk.Frame(self.root)
+        results_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # טבלת תוצאות
+        self.result_tree = ttk.Treeview(results_frame, columns=("הערה", "כותב", "עמוד"), show="headings")
+        
+        # הגדרת כותרות
+        self.result_tree.heading("הערה", text="הערה")
+        self.result_tree.heading("כותב", text="כותב")
+        self.result_tree.heading("עמוד", text="עמוד")
+        
+        # הגדרת רוחב עמודות
+        self.result_tree.column("הערה", width=300)
+        self.result_tree.column("כותב", width=100)
+        self.result_tree.column("עמוד", width=50)
+        
+        # גלילה
+        scrollbar = ttk.Scrollbar(results_frame, orient="vertical", command=self.result_tree.yview)
+        self.result_tree.configure(yscrollcommand=scrollbar.set)
+        
+        # מיקום
+        self.result_tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # כפתור ייצוא
+        export_btn = tk.Button(self.root, text="ייצא לאקסל", command=self.export_to_excel)
+        export_btn.pack(pady=10)
+        
+        # מידע
+        info_label = tk.Label(self.root, text="פותח עם ❤️ לטובת ייצוא הערות מקובצי וורד", fg="gray")
+        info_label.pack(pady=5)
     
-    # שמירת הקובץ הזמני
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_file:
-        tmp_file.write(docx_file.getvalue())
-        tmp_path = tmp_file.name
+    def select_file(self):
+        self.docx_path = filedialog.askopenfilename(
+            filetypes=[("Word Documents", "*.docx")],
+            title="בחר קובץ וורד"
+        )
+        
+        if self.docx_path:
+            self.file_label.config(text=os.path.basename(self.docx_path))
+            self.status_var.set("קובץ נבחר. לחץ על 'עבד את הקובץ' להמשך.")
     
-    try:
-        # קובץ וורד הוא למעשה קובץ ZIP שמכיל מסמכי XML
-        with zipfile.ZipFile(tmp_path, 'r') as zip_ref:
-            # בדיקה אם יש קובץ הערות
-            comment_files = [f for f in zip_ref.namelist() if 'comments.xml' in f]
+    def process_file(self):
+        if not self.docx_path:
+            messagebox.showwarning("שגיאה", "יש לבחור קובץ וורד תחילה")
+            return
+        
+        self.status_var.set("מעבד את הקובץ...")
+        self.root.update()
+        
+        try:
+            # ניקוי נתונים קודמים
+            self.result_tree.delete(*self.result_tree.get_children())
+            self.comments_data = []
             
-            if not comment_files:
-                return comments_data
+            # הפעלת הפונקציה לחילוץ הערות
+            comments = self.extract_comments_from_docx(self.docx_path)
             
-            # קריאת מסמך הוורד לצורך קבלת הטקסט המקורי
-            doc = Document(tmp_path)
-            paragraphs = [p.text for p in doc.paragraphs]
+            # הצגת התוצאות בטבלה
+            for idx, comment in enumerate(comments):
+                self.result_tree.insert("", "end", values=(
+                    comment.get('הערה', '')[:50] + '...' if len(comment.get('הערה', '')) > 50 else comment.get('הערה', ''),
+                    comment.get('כותב', ''),
+                    comment.get('עמוד', '')
+                ))
             
-            # מיפוי מספרי פסקאות לעמודים (הערכה פשוטה)
-            # זה אינו מדויק ב-100% ודורש ספריה חיצונית לקבלת מספרי עמודים מדויקים
-            para_to_page = {}
-            approx_chars_per_page = 3000  # הערכה של כמות תווים בעמוד
-            current_page = 1
-            char_count = 0
+            self.comments_data = comments
             
-            for i, para in enumerate(paragraphs):
-                char_count += len(para)
-                para_to_page[i] = current_page
-                if char_count > approx_chars_per_page:
-                    current_page += 1
-                    char_count = 0
-            
-            # קריאת קובץ XML של ההערות
-            for comment_file in comment_files:
-                xml_content = zip_ref.read(comment_file)
-                root = ET.fromstring(xml_content)
+            if comments:
+                self.status_var.set(f"נמצאו {len(comments)} הערות. ניתן לייצא לאקסל.")
+            else:
+                self.status_var.set("לא נמצאו הערות בקובץ.")
+        
+        except Exception as e:
+            messagebox.showerror("שגיאה", f"אירעה שגיאה בעיבוד הקובץ:\n{str(e)}")
+            self.status_var.set("אירעה שגיאה")
+    
+    def extract_comments_from_docx(self, docx_path):
+        """
+        מחלץ הערות ותגובות מקובץ וורד
+        """
+        # מידע שנרצה לשמור לגבי כל הערה
+        comments_data = []
+        
+        try:
+            # קובץ וורד הוא למעשה קובץ ZIP שמכיל מסמכי XML
+            with zipfile.ZipFile(docx_path, 'r') as zip_ref:
+                # בדיקה אם יש קובץ הערות
+                comment_files = [f for f in zip_ref.namelist() if 'comments.xml' in f]
                 
-                # מציאת המרחב שמות (namespace)
-                ns = {'w': re.search(r'{(.*)}', root.tag).group(1)}
+                if not comment_files:
+                    return comments_data
                 
-                # חילוץ כל ההערות
-                comments = root.findall('.//w:comment', ns)
+                # קריאת מסמך הוורד לצורך קבלת הטקסט המקורי
+                doc = Document(docx_path)
+                paragraphs = [p.text for p in doc.paragraphs]
                 
-                for comment in comments:
-                    comment_id = comment.get(f"{{{ns['w']}}}id")
-                    author = comment.get(f"{{{ns['w']}}}author", "לא ידוע")
-                    date = comment.get(f"{{{ns['w']}}}date", "")
+                # מיפוי מספרי פסקאות לעמודים (הערכה פשוטה)
+                para_to_page = {}
+                approx_chars_per_page = 3000  # הערכה של כמות תווים בעמוד
+                current_page = 1
+                char_count = 0
+                
+                for i, para in enumerate(paragraphs):
+                    char_count += len(para)
+                    para_to_page[i] = current_page
+                    if char_count > approx_chars_per_page:
+                        current_page += 1
+                        char_count = 0
+                
+                # קריאת קובץ XML של ההערות
+                for comment_file in comment_files:
+                    xml_content = zip_ref.read(comment_file)
+                    root = ET.fromstring(xml_content)
                     
-                    # טקסט ההערה
-                    comment_text_elements = comment.findall('.//w:t', ns)
-                    comment_text = "".join([elem.text for elem in comment_text_elements if elem.text])
+                    # מציאת המרחב שמות (namespace)
+                    ns = {'w': re.search(r'{(.*)}', root.tag).group(1)}
                     
-                    # חיפוש תגובות (הערות מקושרות)
-                    parent_id = comment.get(f"{{{ns['w']}}}parentId")
+                    # חילוץ כל ההערות
+                    comments = root.findall('.//w:comment', ns)
                     
-                    # הוספת מידע ההערה לרשימה
-                    comment_data = {
-                        'id': comment_id,
-                        'parent_id': parent_id,
-                        'author': author,
-                        'date': date,
-                        'text': comment_text,
-                        'page': 0  # ערך ברירת מחדל, יעודכן בהמשך
+                    for comment in comments:
+                        comment_id = comment.get(f"{{{ns['w']}}}id")
+                        author = comment.get(f"{{{ns['w']}}}author", "לא ידוע")
+                        date = comment.get(f"{{{ns['w']}}}date", "")
+                        
+                        # טקסט ההערה
+                        comment_text_elements = comment.findall('.//w:t', ns)
+                        comment_text = "".join([elem.text for elem in comment_text_elements if elem.text])
+                        
+                        # חיפוש תגובות (הערות מקושרות)
+                        parent_id = comment.get(f"{{{ns['w']}}}parentId")
+                        
+                        # הוספת מידע ההערה לרשימה
+                        comment_data = {
+                            'id': comment_id,
+                            'parent_id': parent_id,
+                            'author': author,
+                            'date': date,
+                            'text': comment_text,
+                            'page': 0  # ערך ברירת מחדל, יעודכן בהמשך
+                        }
+                        
+                        comments_data.append(comment_data)
+            
+            # יצירת מבנה נתונים היררכי של הערות ותגובות
+            comments_dict = {}
+            for comment in comments_data:
+                comments_dict[comment['id']] = comment
+            
+            # מסדר הערות ותגובות
+            structured_comments = []
+            
+            # מיון ההערות לפי עיקריות ותגובות
+            for comment in comments_data:
+                if comment['parent_id'] is None:  # הערה עיקרית
+                    # חיפוש כל התגובות להערה זו
+                    replies = []
+                    for reply in comments_data:
+                        if reply['parent_id'] == comment['id']:
+                            replies.append(reply)
+                    
+                    # יצירת שורה חדשה לאקסל
+                    row = {
+                        'הערה': comment['text'],
+                        'כותב': comment['author'],
+                        'עמוד': para_to_page.get(0, 1),  # כברירת מחדל עמוד 1
+                        'תאריך': comment['date']
                     }
                     
-                    comments_data.append(comment_data)
+                    # הוספת תגובות
+                    for i, reply in enumerate(replies, 1):
+                        row[f'תגובה {i}'] = reply['text']
+                        row[f'כותב תגובה {i}'] = reply['author']
+                        row[f'תאריך תגובה {i}'] = reply['date']
+                    
+                    structured_comments.append(row)
+            
+            return structured_comments
         
-        # יצירת מבנה נתונים היררכי של הערות ותגובות
-        comments_dict = {}
-        for comment in comments_data:
-            comments_dict[comment['id']] = comment
-        
-        # מסדר הערות ותגובות
-        structured_comments = []
-        
-        # מיון ההערות לפי עיקריות ותגובות
-        for comment in comments_data:
-            if comment['parent_id'] is None:  # הערה עיקרית
-                # חיפוש כל התגובות להערה זו
-                replies = []
-                for reply in comments_data:
-                    if reply['parent_id'] == comment['id']:
-                        replies.append(reply)
-                
-                # יצירת שורה חדשה לאקסל
-                row = {
-                    'הערה': comment['text'],
-                    'כותב': comment['author'],
-                    'עמוד': para_to_page.get(0, 1),  # כברירת מחדל עמוד 1
-                    'תאריך': comment['date']
-                }
-                
-                # הוספת תגובות
-                for i, reply in enumerate(replies, 1):
-                    row[f'תגובה {i}'] = reply['text']
-                    row[f'כותב תגובה {i}'] = reply['author']
-                    row[f'תאריך תגובה {i}'] = reply['date']
-                
-                structured_comments.append(row)
-        
-        return structured_comments
-    finally:
-        # מחיקת הקובץ הזמני
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-
-# טעינת קובץ
-uploaded_file = st.file_uploader("העלה קובץ וורד (.docx)", type=['docx'])
-
-if uploaded_file is not None:
-    with st.spinner('מעבד את הקובץ...'):
-        # חילוץ ההערות והתגובות
-        comments_data = extract_comments_from_docx(uploaded_file)
-        
-        if not comments_data:
-            st.warning("לא נמצאו הערות בקובץ.")
-        else:
-            # יצירת DataFrame
-            df = pd.DataFrame(comments_data)
-            
-            # הצגת תצוגה מקדימה
-            st.subheader("תצוגה מקדימה של ההערות")
-            st.dataframe(df)
-            
-            # יצירת קובץ אקסל בזיכרון
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='הערות')
-            
-            # כפתור להורדת הקובץ
-            excel_data = output.getvalue()
-            file_name = uploaded_file.name.replace('.docx', '_comments.xlsx')
-            
-            st.download_button(
-                label="הורד קובץ אקסל",
-                data=excel_data,
-                file_name=file_name,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-            
-            # מידע סטטיסטי
-            st.subheader("סיכום")
-            st.write(f"סה״כ נמצאו: {len(df)} הערות עיקריות")
-            
-            # בדיקה כמה הערות יש להן תגובות
-            replies_columns = [col for col in df.columns if 'תגובה ' in col and 'כותב' not in col and 'תאריך' not in col]
-            if replies_columns:
-                has_replies = df[replies_columns[0]].notna().sum()
-                st.write(f"מתוכן {has_replies} הערות עם תגובות")
-
-# הוספת הוראות שימוש
-with st.expander("הוראות שימוש"):
-    st.markdown("""
-    ### איך להשתמש באפליקציה:
-    1. לחץ על "העלה קובץ וורד" ובחר את הקובץ שלך (בפורמט .docx)
-    2. האפליקציה תעבד את הקובץ ותחלץ את כל ההערות והתגובות
-    3. תוצג תצוגה מקדימה של הנתונים שחולצו
-    4. לחץ על "הורד קובץ אקסל" כדי לשמור את הנתונים כקובץ אקסל
+        except Exception as e:
+            messagebox.showerror("שגיאה", f"אירעה שגיאה בחילוץ ההערות:\n{str(e)}")
+            return []
     
-    ### הערות:
-    * מספרי העמודים הם הערכה בלבד ועשויים להיות לא מדויקים במסמכים מורכבים
-    * הקובץ שלך לא נשמר בשרת ומעובד באופן מקומי בלבד
-    """)
+    def export_to_excel(self):
+        if not self.comments_data:
+            messagebox.showwarning("אזהרה", "אין נתונים לייצוא")
+            return
+        
+        # שאלה על שם הקובץ ומיקום
+        excel_path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel Files", "*.xlsx")],
+            title="שמור קובץ אקסל",
+            initialfile=f"comments_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        )
+        
+        if not excel_path:
+            return  # המשתמש ביטל
+        
+        try:
+            # יצירת DataFrame
+            df = pd.DataFrame(self.comments_data)
+            
+            # שמירה לאקסל
+            df.to_excel(excel_path, index=False, engine='openpyxl')
+            
+            messagebox.showinfo("הצלחה", f"הקובץ נשמר בהצלחה:\n{excel_path}")
+            self.status_var.set("הנתונים יוצאו בהצלחה")
+            
+            # פתיחת התיקייה
+            os.startfile(os.path.dirname(excel_path))
+            
+        except Exception as e:
+            messagebox.showerror("שגיאה", f"אירעה שגיאה בייצוא לאקסל:\n{str(e)}")
 
-# פוטר
-st.markdown("---")
-st.markdown("פותח עם ❤️ באמצעות Streamlit")
+def main():
+    root = tk.Tk()
+    app = WordCommentsExtractor(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
