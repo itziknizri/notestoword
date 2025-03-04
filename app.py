@@ -93,7 +93,7 @@ class WordCommentsExtractor:
         
         # הגדרת עמודות בסדר הנכון (מימין לשמאל!)
         columns = ("כותב 3", "תגובה 3", "כותב 2", "תגובה 2", "כותב 1", "תגובה 1", 
-                  "תאריך", "עמוד", "כותב", "הערה", "#")
+                   "תאריך", "עמוד", "כותב", "הערה", "#")
         
         # יצירת טבלה עם סדר עמודות מימין לשמאל
         self.result_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=20)
@@ -145,7 +145,7 @@ class WordCommentsExtractor:
         credit_frame.pack(fill="x", pady=5)
         
         credit = ttk.Label(credit_frame, text="פותח ע\"י יצחק נזרי", 
-                          font=("Segoe UI", 9), foreground="gray")
+                           font=("Segoe UI", 9), foreground="gray")
         credit.pack(side="bottom", pady=5)
     
     def select_file(self):
@@ -214,7 +214,7 @@ class WordCommentsExtractor:
     
     def extract_comments_with_replies(self):
         """
-        פונקציה חדשה לחילוץ הערות ותגובות מקובץ וורד בצורה נכונה
+        פונקציה לחילוץ הערות ותגובות מקובץ וורד בצורה נכונה
         מזהה שרשורי תגובות באופן מדויק
         """
         if not self.docx_path or not os.path.exists(self.docx_path):
@@ -256,8 +256,10 @@ class WordCommentsExtractor:
                             comment_id = comment.get(f"{{{ns['w']}}}id")
                             if not comment_id:
                                 continue
-                                
+                            
+                            # שינוי: בדיקה האם parent_id קיים (גם במקרה של מחרוזת ריקה)
                             parent_id = comment.get(f"{{{ns['w']}}}parentId")
+                            
                             author = comment.get(f"{{{ns['w']}}}author", "")
                             date = comment.get(f"{{{ns['w']}}}date", "")
                             
@@ -270,7 +272,6 @@ class WordCommentsExtractor:
                             comment_text = "".join(text_parts)
                             
                             # חישוב מספר עמוד משוער
-                            # שימוש במספר סידורי להערכת מיקום
                             page = 1
                             if len(all_comments) > 0:
                                 position_ratio = len(all_comments) / 20  # הערכה גסה יחסית
@@ -293,17 +294,15 @@ class WordCommentsExtractor:
                 print(f"נמצאו {len(all_comments)} הערות במסמך")
                 
                 # ארגון ההערות בשרשורים
-                # ראשית, זיהוי ההערות הראשיות (שאין להן הורה)
                 main_comments = []
                 reply_map = {}  # מיפוי: זיהוי הערה -> רשימת תגובות
                 
                 # מיון כל ההערות להערות ראשיות ותגובות
                 for comment in all_comments:
-                    if comment['parent_id'] is None:
+                    if not comment['parent_id']:
                         # זו הערה ראשית
                         main_comments.append(comment)
                     else:
-                        # זו תגובה להערה אחרת
                         parent_id = comment['parent_id']
                         if parent_id not in reply_map:
                             reply_map[parent_id] = []
@@ -329,12 +328,11 @@ class WordCommentsExtractor:
                     # מיון התגובות לפי תאריך
                     direct_replies.sort(key=lambda x: x['date'])
                     
-                    # הוספת התגובות כעמודות נפרדות
+                    # הוספת התגובות כעמודות נפרדות עד 10 תגובות
                     for i, reply in enumerate(direct_replies, 1):
-                        if i <= 10:  # הגבלה ל-10 תגובות מקסימום
+                        if i <= 10:
                             thread[f'תגובה {i}'] = reply['text']
                             thread[f'כותב {i}'] = reply['author']
-                            # ניתן להוסיף גם את התאריך של כל תגובה אם נדרש
                     
                     result_threads.append(thread)
                 
@@ -353,7 +351,6 @@ class WordCommentsExtractor:
             return ""
         
         try:
-            # ניקוי וסטנדרטיזציה של הפורמט
             date_str = date_str.replace('Z', '+00:00')
             date_obj = datetime.fromisoformat(date_str)
             return date_obj.strftime('%d/%m/%Y %H:%M')
@@ -365,7 +362,6 @@ class WordCommentsExtractor:
             messagebox.showwarning("אזהרה", "אין נתונים לייצוא")
             return
         
-        # בחירת מיקום לשמירת הקובץ
         excel_path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel Files", "*.xlsx")],
@@ -377,37 +373,30 @@ class WordCommentsExtractor:
             return
         
         try:
-            # יצירת DataFrame
             df = pd.DataFrame(self.comments_data)
             
             # הגדרת סדר העמודות בצורה נכונה לקריאה מימין לשמאל
             column_order = ['אינדקס', 'הערה', 'כותב', 'עמוד', 'תאריך']
             
-            # הוספת עמודות תגובה
             for i in range(1, 11):
                 for field in [f'תגובה {i}', f'כותב {i}']:
                     if field in df.columns:
                         column_order.append(field)
             
-            # סינון לעמודות שקיימות בדאטה
             final_columns = [col for col in column_order if col in df.columns]
             
-            # ייצוא לאקסל עם הגדרות RTL
             with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
                 df[final_columns].to_excel(writer, index=False, sheet_name='הערות')
                 
-                # הגדרת כיוון RTL לגיליון
                 try:
                     worksheet = writer.sheets['הערות']
                     worksheet.sheet_view.rightToLeft = True
                 except:
-                    # במקרה שיש תקלה בהגדרת RTL
                     pass
             
             messagebox.showinfo("הצלחה", f"הקובץ נשמר בהצלחה:\n{excel_path}")
             self.status_var.set("הנתונים יוצאו בהצלחה")
             
-            # ניסיון לפתוח את התיקייה המכילה את הקובץ
             try:
                 os.startfile(os.path.dirname(excel_path))
             except:
@@ -419,13 +408,11 @@ class WordCommentsExtractor:
 def main():
     root = tk.Tk()
     
-    # הגדרות RTL ברמת האפליקציה
     try:
         root.tk_strictMotif(False)
     except:
         pass
     
-    # יצירת האפליקציה
     app = WordCommentsExtractor(root)
     root.mainloop()
 
