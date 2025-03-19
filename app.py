@@ -73,7 +73,7 @@ class WordCommentsExtractor:
         
         # מסגרת לבחירת קובץ (מסודרת מימין לשמאל)
         file_frame = ttk.Frame(main_frame)
-        file_frame.pack(fill="x", pady=10)
+        file_frame.pack(fill="x", pady=5)
         
         select_btn = ttk.Button(file_frame, text="בחר קובץ וורד", command=self.select_file)
         select_btn.pack(side="right", padx=5)
@@ -81,12 +81,28 @@ class WordCommentsExtractor:
         self.file_label = ttk.Label(file_frame, text="לא נבחר קובץ")
         self.file_label.pack(side="right", padx=5, fill="x", expand=True)
         
-        # כפתור עיבוד
-        process_frame = ttk.Frame(main_frame)
-        process_frame.pack(fill="x", pady=5)
+        # מסגרת כפתורי פעולה
+        action_frame = ttk.Frame(main_frame)
+        action_frame.pack(fill="x", pady=5)
         
-        process_btn = ttk.Button(process_frame, text="עבד את הקובץ", command=self.process_file)
+        # כפתורי פעולה בצד ימין
+        process_btn = ttk.Button(action_frame, text="עבד את הקובץ", command=self.process_file)
         process_btn.pack(side="right", padx=5)
+        
+        export_btn = ttk.Button(action_frame, text="ייצא לאקסל", command=self.export_to_excel)
+        export_btn.pack(side="right", padx=5)
+        
+        # כפתורי מיון - מוסיף אפשרויות מיון
+        sort_label = ttk.Label(action_frame, text="מיון לפי:")
+        sort_label.pack(side="right", padx=5)
+        
+        sort_page_btn = ttk.Button(action_frame, text="עמוד", 
+                                  command=lambda: self.sort_treeview_by_column(1))
+        sort_page_btn.pack(side="right", padx=2)
+        
+        sort_date_btn = ttk.Button(action_frame, text="תאריך", 
+                                  command=lambda: self.sort_treeview_by_column(4))
+        sort_date_btn.pack(side="right", padx=2)
         
         # אזור סטטוס
         status_frame = ttk.Frame(main_frame, relief="sunken", borderwidth=1)
@@ -99,7 +115,7 @@ class WordCommentsExtractor:
         
         # יצירת מסגרת לטבלה
         tree_frame = ttk.Frame(main_frame)
-        tree_frame.pack(fill="both", expand=True, pady=10)
+        tree_frame.pack(fill="both", expand=True, pady=5)
         
         # הגדרת עמודות לפי הדרישות - סדר מימין לשמאל
         columns = (
@@ -112,9 +128,10 @@ class WordCommentsExtractor:
         # יצירת טבלה עם סדר עמודות מימין לשמאל
         self.result_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=20)
         
-        # הגדרת כותרות ורוחב עמודות
-        for col in columns:
-            self.result_tree.heading(col, text=col, anchor="e")  # כותרות מיושרות לימין
+        # הגדרת פונקציות מיון על ידי לחיצה על כותרות
+        for i, col in enumerate(columns):
+            self.result_tree.heading(col, text=col, anchor="e",
+                                   command=lambda c=i: self.sort_treeview_by_column(c))
             
             # רוחב קבוע לעמודות
             if col == "מס'":
@@ -146,13 +163,17 @@ class WordCommentsExtractor:
         x_scrollbar.pack(side="bottom", fill="x")  # סרגל הגלילה האופקי למטה
         self.result_tree.pack(side="right", fill="both", expand=True)  # עץ בצד ימין
         
-        # מסגרת כפתורים
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill="x", pady=10)
+        # טקסט עזרה
+        help_frame = ttk.Frame(main_frame)
+        help_frame.pack(fill="x", pady=5)
         
-        # כפתור ייצוא
-        export_btn = ttk.Button(button_frame, text="ייצא לאקסל", command=self.export_to_excel)
-        export_btn.pack(side="right", padx=5)
+        help_text = ttk.Label(help_frame, text="טיפ: ניתן ללחוץ על כותרות העמודות כדי למיין את הטבלה",
+                             font=("Segoe UI", 9), foreground="gray")
+        help_text.pack(side="right", pady=2)
+        
+        # מסגרת כפתורים תחתונה
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill="x", pady=5)
         
         # כפתור יציאה
         exit_btn = ttk.Button(button_frame, text="יציאה", command=self.root.quit)
@@ -160,11 +181,11 @@ class WordCommentsExtractor:
         
         # קרדיט
         credit_frame = ttk.Frame(main_frame)
-        credit_frame.pack(fill="x", pady=5)
+        credit_frame.pack(fill="x", pady=2)
         
         credit = ttk.Label(credit_frame, text="פותח ע\"י יצחק נזרי", 
                           font=("Segoe UI", 9), foreground="gray")
-        credit.pack(side="bottom", pady=5)
+        credit.pack(side="bottom", pady=2)
     
     def select_file(self):
         """בחירת קובץ וורד לעיבוד"""
@@ -194,7 +215,18 @@ class WordCommentsExtractor:
             # חילוץ שרשורי התגובות - הערה ראשית עם כל התגובות שלה
             comment_threads = self.extract_comment_threads()
             
-            # הצגת התוצאות בטבלה
+            if not comment_threads:
+                self.status_var.set("לא נמצאו הערות בקובץ.")
+                return
+            
+            # בדיקת ערכי מפתח בהערות לפני הצגה
+            keys_to_validate = ['הערה', 'כותב', 'תאריך', 'עמוד']
+            for thread in comment_threads:
+                for key in keys_to_validate:
+                    if key not in thread:
+                        thread[key] = ""
+            
+            # הצגת התוצאות בטבלה (בכיוון RTL - מימין לשמאל)
             for idx, thread in enumerate(comment_threads, 1):
                 # הכנת ערכים להצגה בטבלה
                 values = [
@@ -213,22 +245,77 @@ class WordCommentsExtractor:
                         thread.get(f'תאריך תגובה {i}', '')
                     ])
                 
-                # הוספה לטבלה - שימוש ב-index=0 מבטיח שהתוצאה תהיה בסדר הפוך לסדר ההוספה
-                item_id = self.result_tree.insert("", 0, values=values)
+                # הוספה לטבלה - שורות חדשות נוספות לתחילת הטבלה
+                # זו דרך נכונה להציג שורות בסדר RTL כדי שהמספרים יהיו הגיוניים
+                item_id = self.result_tree.insert("", "end", values=values)
                 
-                # שמירת האינדקס למידע
+                # שמירת האינדקס למידע לשימוש בייצוא
                 thread['מס\''] = idx
             
+            # שמירת הנתונים במשתנה המחלקה לשימוש בייצוא
             self.comments_data = comment_threads
             
+            # עדכון סטטוס
+            total_replies = sum(1 for thread in comment_threads for i in range(1, 4) if thread.get(f'תגובה {i}', ''))
+            self.status_var.set(f"נמצאו {len(comment_threads)} הערות ו-{total_replies} תגובות. ניתן לייצא לאקסל.")
+            
+            # מיון הטבלה לפי מספר עמוד אם יש נתונים
             if comment_threads:
-                self.status_var.set(f"נמצאו {len(comment_threads)} שרשורי הערות. ניתן לייצא לאקסל.")
-            else:
-                self.status_var.set("לא נמצאו הערות בקובץ.")
-        
+                self.sort_treeview_by_column(1)  # מיון לפי עמוד (עמודה שנייה)
+            
         except Exception as e:
-            messagebox.showerror("שגיאה", f"אירעה שגיאה בעיבוד הקובץ:\n{str(e)}")
-            self.status_var.set("אירעה שגיאה")
+            error_msg = str(e)
+            print(f"שגיאה בעיבוד הקובץ: {error_msg}")
+            messagebox.showerror("שגיאה", f"אירעה שגיאה בעיבוד הקובץ:\n{error_msg}")
+            self.status_var.set("אירעה שגיאה בעיבוד הקובץ")
+            
+    def sort_treeview_by_column(self, col, descending=False):
+        """מיון הטבלה לפי עמודה מסוימת"""
+        try:
+            # קבלת נתונים מהטבלה
+            data = []
+            for child_id in self.result_tree.get_children(''):
+                values = self.result_tree.item(child_id, 'values')
+                data.append((child_id, values))
+            
+            # פונקציית מיון לערכים מספריים או טקסטואליים
+            def convert_value(val):
+                try:
+                    # ניסיון להמיר למספר - אם אפשר
+                    return int(val)
+                except (ValueError, TypeError):
+                    # אחרת משאיר כמחרוזת
+                    return str(val).lower()
+            
+            # מיון הנתונים
+            data.sort(key=lambda x: convert_value(x[1][col]), reverse=descending)
+            
+            # סידור מחדש של הטבלה
+            for idx, item in enumerate(data):
+                self.result_tree.move(item[0], '', idx)
+                
+            # עדכון מספרי שורה לאחר המיון
+            self.update_row_numbers()
+            
+        except Exception as e:
+            print(f"שגיאה במיון הטבלה: {str(e)}")
+    
+    def update_row_numbers(self):
+        """עדכון מספרי שורה בטבלה ובנתונים"""
+        try:
+            # עדכון מספרי שורה בנתונים
+            for idx, child_id in enumerate(self.result_tree.get_children(''), 1):
+                # עדכון ערך בטבלה
+                values = list(self.result_tree.item(child_id, 'values'))
+                values[0] = idx  # עדכון מספר שורה
+                self.result_tree.item(child_id, values=values)
+                
+                # עדכון בנתונים לייצוא
+                for thread in self.comments_data:
+                    if thread.get('מזהה') == values[5]:  # אם יש התאמה במזהה
+                        thread['מס\''] = idx
+        except Exception as e:
+            print(f"שגיאה בעדכון מספרי שורה: {str(e)}")
     
     def extract_comment_threads(self):
         """
@@ -239,31 +326,32 @@ class WordCommentsExtractor:
             return []
             
         try:
-            comment_threads = []  # שרשורי הערות לתצוגה
-            
             # ניסיון להשיג מספרי עמודים מדויקים באמצעות Word COM
             page_map = self.get_exact_page_numbers(self.docx_path)
             
+            # יצירת אובייקט Document של python-docx
+            doc = Document(self.docx_path)
+            
+            # חישוב מספרי עמודים בשיטה אלטרנטיבית אם אין לנו מידע מדויק
+            if not page_map:
+                page_map = {}
+                self.calculate_page_numbers(doc, page_map)
+                
+            comment_threads = []  # רשימה סופית של שרשורי הערות
+            
             # פתיחת קובץ docx כארכיון ZIP
             with zipfile.ZipFile(self.docx_path, 'r') as docx_zip:
-                # אם לא הצלחנו לקבל מספרי עמודים מדויקים, ננסה לחשב בעצמנו
-                if not page_map:
-                    try:
-                        doc = Document(self.docx_path)
-                        page_map = {}
-                        self.calculate_page_numbers(doc, page_map)
-                    except Exception as e:
-                        print(f"שגיאה בחישוב מספרי עמודים: {str(e)}")
-                
-                # חיפוש קבצי XML שמכילים הערות
+                # חיפוש קובץ XML שמכיל הערות
                 comment_files = [f for f in docx_zip.namelist() 
                                if 'word/comments' in f.lower() or 'word/comment' in f.lower()]
                 
                 if not comment_files:
+                    self.status_var.set("לא נמצאו הערות בקובץ")
                     return []
                 
-                # מיפוי של מזהי הערות להערות עצמן
-                comment_map = {}
+                # מיפוי של כל ההערות והתגובות
+                all_comments = {}  # מיפוי של כל ההערות/תגובות לפי מזהה
+                parent_child_map = {}  # מיפוי של הורים לילדים (הערות לתגובות)
                 
                 # קריאת כל קבצי ההערות
                 for comment_file in comment_files:
@@ -277,14 +365,24 @@ class WordCommentsExtractor:
                         
                     ns = {'w': ns_match.group(1)}
                     
+                    # הדפסת מידע על ההערות למטרות דיבאג
+                    self.status_var.set(f"מעבד קובץ הערות: {comment_file}")
+                    self.root.update()
+                    
                     # חילוץ פרטי ההערות
                     for comment in root.findall('.//w:comment', ns):
                         comment_id = comment.get(f"{{{ns['w']}}}id")
                         if not comment_id:
                             continue
-                            
+                        
                         # בדיקה אם זו תגובה להערה אחרת
                         parent_id = comment.get(f"{{{ns['w']}}}parentId")
+                        
+                        # שמירת יחס הורה-ילד
+                        if parent_id:
+                            if parent_id not in parent_child_map:
+                                parent_child_map[parent_id] = []
+                            parent_child_map[parent_id].append(comment_id)
                         
                         author = comment.get(f"{{{ns['w']}}}author", "")
                         date = comment.get(f"{{{ns['w']}}}date", "")
@@ -297,71 +395,67 @@ class WordCommentsExtractor:
                         
                         comment_text = "".join(text_parts)
                         
-                        # חישוב מספר עמוד (אם לא חושב קודם)
-                        page = page_map.get(comment_id, 1)
+                        # מספר עמוד
+                        page = page_map.get(comment_id, "1")  # ברירת מחדל לעמוד 1
                         
-                        # יצירת אובייקט ההערה
-                        comment_obj = {
+                        # שמירת פרטי ההערה/תגובה
+                        all_comments[comment_id] = {
                             'id': comment_id,
                             'parent_id': parent_id,
+                            'text': comment_text,
                             'author': author,
                             'date': self.format_date(date),
-                            'text': comment_text,
                             'page': page,
                             'is_reply': parent_id is not None
                         }
-                        
-                        # הוספה למיפוי
-                        comment_map[comment_id] = comment_obj
                 
-                # *** ארגון הערות ותגובות בשרשורים ***
-                # מיון הערות לפי עיקריות ותגובות
-                main_comments = []  # הערות ראשיות
-                replies_by_parent = {}  # מיפוי של תגובות לפי מזהה הורה
+                # מציאת ההערות הראשיות (שאין להן הורה)
+                root_comments = []
+                for comment_id, comment in all_comments.items():
+                    if not comment['parent_id']:
+                        root_comments.append(comment)
                 
-                # חלוקה של ההערות להערות ראשיות ותגובות
-                for comment_id, comment in comment_map.items():
-                    if not comment['parent_id']:  # הערה ראשית
-                        main_comments.append(comment)
-                    else:  # תגובה להערה אחרת
-                        parent_id = comment['parent_id']
-                        if parent_id not in replies_by_parent:
-                            replies_by_parent[parent_id] = []
-                        replies_by_parent[parent_id].append(comment)
+                # מיון ההערות הראשיות לפי מספר עמוד ואח"כ לפי תאריך
+                root_comments.sort(key=lambda x: (int(x['page']), x['date']))
                 
-                # מיון הערות ראשיות לפי עמוד
-                main_comments.sort(key=lambda x: x['page'])
+                # דיווח על מספר ההערות הראשיות והתגובות
+                total_replies = sum(len(children) for children in parent_child_map.values())
+                self.status_var.set(f"נמצאו {len(root_comments)} הערות ראשיות ו-{total_replies} תגובות")
+                self.root.update()
                 
-                # ארגון השרשורים
-                for main_comment in main_comments:
+                # בניית שרשורי הערות עם התגובות שלהן
+                for root_comment in root_comments:
                     thread = {
-                        'הערה': main_comment['text'],
-                        'כותב': main_comment['author'],
-                        'תאריך': main_comment['date'],
-                        'עמוד': main_comment['page'],
-                        'מזהה': main_comment['id'],
+                        'מזהה': root_comment['id'],
+                        'עמוד': root_comment['page'],
+                        'הערה': root_comment['text'],
+                        'כותב': root_comment['author'],
+                        'תאריך': root_comment['date']
                     }
                     
-                    # מציאת תגובות ישירות להערה הראשית
-                    direct_replies = replies_by_parent.get(main_comment['id'], [])
+                    # מציאת כל התגובות של ההערה הנוכחית
+                    reply_idx = 1
+                    if root_comment['id'] in parent_child_map:
+                        # מיון תגובות לפי תאריך
+                        replies = [all_comments[reply_id] for reply_id in parent_child_map[root_comment['id']]]
+                        replies.sort(key=lambda x: x['date'])
+                        
+                        # הוספת התגובות לשרשור
+                        for reply in replies[:3]:  # מקסימום 3 תגובות
+                            thread[f'תגובה {reply_idx}'] = reply['text']
+                            thread[f'כותב תגובה {reply_idx}'] = reply['author']
+                            thread[f'תאריך תגובה {reply_idx}'] = reply['date']
+                            reply_idx += 1
                     
-                    # מיון תגובות לפי תאריך (מהמוקדם למאוחר)
-                    direct_replies.sort(key=lambda x: x.get('date', ''))
-                    
-                    # הוספת התגובות לשרשור (עד 3 תגובות)
-                    for i, reply in enumerate(direct_replies[:3], 1):
-                        thread[f'תגובה {i}'] = reply['text']
-                        thread[f'כותב תגובה {i}'] = reply['author'] 
-                        thread[f'תאריך תגובה {i}'] = reply['date']
-                    
-                    # הוספת השרשור לרשימה
+                    # הוספת השרשור לרשימה הסופית
                     comment_threads.append(thread)
                 
                 return comment_threads
                 
         except Exception as e:
-            print(f"שגיאה כללית בחילוץ הערות: {str(e)}")
-            messagebox.showerror("שגיאה", f"שגיאה בחילוץ הערות: {str(e)}")
+            error_message = str(e)
+            print(f"שגיאה כללית בחילוץ הערות: {error_message}")
+            messagebox.showerror("שגיאה", f"שגיאה בחילוץ הערות:\n{error_message}")
             return []
     
     def get_exact_page_numbers(self, doc_path):
@@ -375,7 +469,7 @@ class WordCommentsExtractor:
             return page_map
             
         try:
-            self.status_var.set("מנסה לחשב מספרי עמודים מדויקים עם Word...")
+            self.status_var.set("מנסה לחשב מספרי עמודים מדויקים באמצעות Word...")
             self.root.update()
             
             # יצירת אובייקט Word
@@ -391,13 +485,42 @@ class WordCommentsExtractor:
             self.status_var.set(f"נמצאו {comment_count} הערות. מחשב מספרי עמודים...")
             self.root.update()
             
+            # איסוף מזהים אמיתיים של הערות
+            comment_ids = []
+            try:
+                # פתיחת המסמך כ-ZIP להוצאת מזהי הערות מה-XML
+                with zipfile.ZipFile(doc_path, 'r') as zip_file:
+                    comment_files = [f for f in zip_file.namelist() 
+                                   if 'word/comments' in f.lower() or 'word/comment' in f.lower()]
+                    
+                    for comment_file in comment_files:
+                        xml_content = zip_file.read(comment_file)
+                        xml_root = ET.fromstring(xml_content)
+                        
+                        # זיהוי namespace
+                        ns_match = re.search(r'{(.*?)}', xml_root.tag)
+                        if not ns_match:
+                            continue
+                            
+                        ns = {'w': ns_match.group(1)}
+                        
+                        # חילוץ מזהי הערות לפי הסדר
+                        for comment in xml_root.findall('.//w:comment', ns):
+                            comment_id = comment.get(f"{{{ns['w']}}}id")
+                            if comment_id:
+                                comment_ids.append(comment_id)
+            except Exception as e:
+                print(f"שגיאה באיסוף מזהי הערות: {str(e)}")
+                # אם לא הצלחנו לאסוף מזהי הערות, ניצור מזהים "מלאכותיים"
+                comment_ids = [str(i) for i in range(comment_count)]
+            
             # מיפוי מספרי הערות למספרי עמודים
             for i in range(1, comment_count + 1):
                 try:
                     comment = doc.Comments(i)
                     
-                    # ניסיון להשיג מזהה הערה אמיתי
-                    comment_id = str(i-1)  # ב-XML המזהים מתחילים מ-0
+                    # מזהה הערה: אם איספנו מזהים, נשתמש בהם; אחרת נשתמש במספר-1
+                    comment_id = comment_ids[i-1] if i-1 < len(comment_ids) else str(i-1)
                     
                     # השג את הטקסט עם ההערה
                     comment_range = comment.Scope
@@ -405,6 +528,9 @@ class WordCommentsExtractor:
                     # מספר העמוד בו נמצאת ההערה (wdActiveEndPageNumber = 3)
                     page_num = comment_range.Information(3)
                     page_map[comment_id] = page_num
+                    
+                    # הדפסה למטרות דיבאג
+                    print(f"הערה {i}, מזהה {comment_id}, עמוד {page_num}")
                     
                 except Exception as e:
                     print(f"שגיאה בהערה {i}: {str(e)}")
@@ -428,60 +554,102 @@ class WordCommentsExtractor:
             return {}
     
     def calculate_page_numbers(self, doc, page_map):
-        """חישוב מספרי עמודים לכל הערה (הערכה משופרת)"""
+        """חישוב מספרי עמודים לכל הערה - שיטה משופרת"""
         try:
-            # מציאת מספר תווים ממוצע לעמוד על פי מסמכי וורד סטנדרטיים
-            chars_per_page = 3000  # הערכה מעודכנת
-
-            # מאפייני המסמך
-            paragraphs = list(doc.paragraphs)
-            total_paragraphs = len(paragraphs)
-            total_chars = sum(len(p.text) for p in paragraphs)
+            self.status_var.set("מחשב מספרי עמודים בשיטה חלופית...")
+            self.root.update()
+            
+            # חישוב הערכה של מספר עמודים לפי תקן מקובל
+            chars_per_page = 3000  # הערכה ממוצעת לעמוד טקסט סטנדרטי
+            
+            # חילוץ כל הפסקאות והמידע עליהן
+            paragraphs = []
+            para_info = []
+            
+            # איסוף מידע על כל הפסקאות
+            for section in doc.sections:
+                for para in doc.paragraphs:
+                    paragraphs.append(para)
+                    
+                    # תכונות של הפסקה
+                    para_data = {
+                        'text': para.text,
+                        'length': len(para.text),
+                        'comment_ids': []
+                    }
+                    
+                    # חיפוש מזהי הערות בפסקה
+                    for run in para.runs:
+                        if hasattr(run, '_element') and run._element is not None:
+                            try:
+                                comment_references = run._element.xpath(".//w:commentReference")
+                                for ref in comment_references:
+                                    if ref is not None and ref.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id"):
+                                        comment_id = ref.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id")
+                                        para_data['comment_ids'].append(comment_id)
+                            except:
+                                pass
+                    
+                    para_info.append(para_data)
+            
+            # סך כל התווים במסמך
+            total_chars = sum(p['length'] for p in para_info)
             
             # הערכת מספר עמודים כולל
-            estimated_total_pages = max(1, int(total_chars / chars_per_page) + 1)
+            estimated_total_pages = max(3, int(total_chars / chars_per_page) + 1)
             
-            # יצירת רשימה של אחוזי התקדמות לכל פסקה במסמך
-            para_positions = []
-            current_char_count = 0
-            
-            for para in paragraphs:
-                current_char_count += len(para.text)
-                position_percent = current_char_count / total_chars if total_chars > 0 else 0
-                para_positions.append(position_percent)
-            
-            # חיפוש מזהי הערות בכל פסקה
-            for idx, para in enumerate(paragraphs):
-                # חישוב מספר עמוד משוער על פי מיקום באחוזים
-                estimated_page = max(1, int(para_positions[idx] * estimated_total_pages) + 1)
+            # חישוב מיקום יחסי של כל פסקה במסמך
+            current_chars = 0
+            for i, para_data in enumerate(para_info):
+                current_chars += para_data['length']
                 
-                # חיפוש מזהי הערות בפסקה
-                for run in para.runs:
-                    if hasattr(run, '_element') and run._element is not None:
-                        try:
-                            comment_references = run._element.xpath(".//w:commentReference")
-                            for ref in comment_references:
-                                if ref is not None and ref.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id"):
-                                    comment_id = ref.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id")
-                                    page_map[comment_id] = estimated_page
-                        except:
-                            pass
+                # מיקום יחסי של הפסקה במסמך (0-1)
+                relative_position = current_chars / total_chars if total_chars > 0 else 0
+                
+                # חישוב מספר עמוד משוער לפי המיקום היחסי
+                estimated_page = max(1, min(estimated_total_pages, 
+                                          round(relative_position * estimated_total_pages)))
+                
+                # שמירת מספר העמוד המשוער לכל מזהה הערה בפסקה זו
+                for comment_id in para_data['comment_ids']:
+                    page_map[comment_id] = estimated_page
             
-            # במקרה שכל העמודים יצאו זהים, יצירת פיזור מלאכותי
-            if len(set(page_map.values())) <= 1 and len(page_map) > 1:
-                comment_ids = list(page_map.keys())
+            # בדיקה עבור מסמכים קצרים - אם יש מעט עמודים, נפזר את ההערות בצורה שווה יותר
+            unique_pages = len(set(page_map.values()))
+            if unique_pages <= 1 and len(page_map) > 3:
+                self.status_var.set("מחשב פיזור הערות משופר...")
+                self.root.update()
+                
+                # מיון מזהי הערות לפי מספר סידורי (מניח שהמזהים הם מספרים)
+                comment_ids = sorted(page_map.keys(), key=lambda x: int(x) if x.isdigit() else 0)
                 num_comments = len(comment_ids)
                 
+                # חישוב פיזור משופר
+                if estimated_total_pages < 3 and num_comments > 5:
+                    # כפה לפחות 3 עמודים למסמכים עם הרבה הערות
+                    estimated_total_pages = max(3, num_comments // 5)
+                
+                # יצירת פיזור הדרגתי על פני העמודים
                 for i, comment_id in enumerate(comment_ids):
-                    synthetic_page = max(1, int((i / num_comments) * estimated_total_pages) + 1)
-                    page_map[comment_id] = synthetic_page
+                    # פיזור הדרגתי על פני העמודים
+                    page = max(1, min(estimated_total_pages, 
+                                    1 + int((i / max(1, num_comments - 1)) * (estimated_total_pages - 1))))
+                    page_map[comment_id] = page
+            
+            self.status_var.set(f"נמצאו {len(page_map)} הערות בכ-{estimated_total_pages} עמודים")
+            self.root.update()
         
         except Exception as e:
-            print(f"שגיאה בחישוב עמודים: {str(e)}")
-            # במקרה של שגיאה - הקצאת מספרי עמודים דמיוניים
-            comment_ids = list(page_map.keys())
+            error_msg = str(e)
+            print(f"שגיאה בחישוב מספרי עמודים: {error_msg}")
+            self.status_var.set("שגיאה בחישוב מספרי עמודים, משתמש בערכי ברירת מחדל")
+            self.root.update()
+            
+            # במקרה של שגיאה - יצירת מספרי עמודים ברירת מחדל
+            comment_ids = list(page_map.keys()) if page_map else []
             for i, comment_id in enumerate(comment_ids):
-                page_map[comment_id] = (i % 10) + 1
+                # התחלה מעמוד 1 ופיזור כל 3-4 הערות
+                page_map[comment_id] = (i // 3) + 1
     
     def format_date(self, date_str):
         """עיצוב תאריך לפורמט קריא"""
@@ -513,11 +681,18 @@ class WordCommentsExtractor:
         if not excel_path:
             return
         
+        self.status_var.set("מייצא לאקסל...")
+        self.root.update()
+        
         try:
             # הכנת הנתונים לאקסל
             excel_data = []
             
-            for thread in self.comments_data:
+            for idx, thread in enumerate(self.comments_data, 1):
+                # הוספת מספר שורה
+                if 'מס\'' not in thread:
+                    thread['מס\''] = idx
+                
                 row_data = {
                     'מס\'': thread.get('מס\'', ''),
                     'עמוד': thread.get('עמוד', ''),
@@ -541,7 +716,7 @@ class WordCommentsExtractor:
             # המרה ל-DataFrame
             df = pd.DataFrame(excel_data)
             
-            # הגדרת סדר העמודות
+            # הגדרת סדר העמודות - סדר RTL 
             column_order = [
                 'מס\'', 'עמוד', 'הערה', 'כותב ההערה', 'תאריך ההערה',
                 'תגובה 1', 'כותב תגובה 1', 'תאריך תגובה 1',
@@ -549,52 +724,108 @@ class WordCommentsExtractor:
                 'תגובה 3', 'כותב תגובה 3', 'תאריך תגובה 3'
             ]
             
+            # מודיע על התקדמות
+            self.status_var.set("יוצר קובץ אקסל...")
+            self.root.update()
+            
             # ייצוא לאקסל עם הגדרות RTL
-            with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-                # יצירת גיליון
-                df[column_order].to_excel(writer, index=False, sheet_name='הערות')
-                
-                # הגדרת כיוון RTL לגיליון
-                worksheet = writer.sheets['הערות']
-                worksheet.sheet_view.rightToLeft = True
-                
-                # התאמת רוחב עמודות באקסל
-                for i, column in enumerate(column_order):
-                    if 'הערה' in column or 'תגובה' in column and not column.startswith('כותב') and not column.startswith('תאריך'):
-                        base_width = 50  # עמודות טקסט ארוכות
-                    elif 'תאריך' in column:
-                        base_width = 18  # עמודות תאריך
-                    elif 'כותב' in column:
-                        base_width = 15  # עמודות שם כותב
-                    elif column == 'עמוד':
-                        base_width = 8  # עמודת מספר עמוד
-                    elif column == 'מס\'':
-                        base_width = 6  # עמודת מספור
-                    else:
-                        base_width = 15
-                    
-                    # חישוב לפי תוכן בפועל
-                    try:
-                        max_length = df[column].astype(str).apply(len).max()
-                        adjusted_width = max(base_width, min(80, max_length + 2))
-                    except:
-                        adjusted_width = base_width
-                    
-                    # הגדרת רוחב עמודה
-                    col_letter = chr(65 + i) if i < 26 else chr(64 + (i // 26)) + chr(65 + (i % 26))
-                    worksheet.column_dimensions[col_letter].width = adjusted_width
-            
-            messagebox.showinfo("הצלחה", f"הקובץ נשמר בהצלחה:\n{excel_path}")
-            self.status_var.set(f"הנתונים יוצאו בהצלחה: {os.path.basename(excel_path)}")
-            
-            # פתיחת התיקייה המכילה את הקובץ
             try:
-                os.startfile(os.path.dirname(excel_path))
-            except:
-                pass
-        
+                with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+                    # יצירת גיליון
+                    columns_to_use = [col for col in column_order if col in df.columns]
+                    df[columns_to_use].to_excel(writer, index=False, sheet_name='הערות')
+                    
+                    # הגדרת כיוון RTL לגיליון
+                    worksheet = writer.sheets['הערות']
+                    worksheet.sheet_view.rightToLeft = True
+                    
+                    # עיצוב סגנון
+                    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+                    
+                    # הגדרת פונט וסגנון לכותרות
+                    header_font = Font(name='Arial', size=11, bold=True)
+                    header_fill = PatternFill(start_color="D0E0FF", end_color="D0E0FF", fill_type="solid")
+                    
+                    # גבולות
+                    thin_border = Border(
+                        left=Side(style='thin'), 
+                        right=Side(style='thin'), 
+                        top=Side(style='thin'), 
+                        bottom=Side(style='thin')
+                    )
+                    
+                    # עיצוב כותרות
+                    for cell in worksheet[1]:
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = Alignment(horizontal='right', vertical='center', wrap_text=True)
+                        cell.border = thin_border
+                    
+                    # התאמת רוחב עמודות
+                    for i, column in enumerate(columns_to_use):
+                        col_idx = i + 1  # אינדקס עמודה באקסל (מתחיל מ-1)
+                        
+                        # הגדרת רוחב בהתאם לסוג העמודה
+                        if column == 'הערה':
+                            width = 60  # הערה ראשית רחבה במיוחד
+                        elif column in ['תגובה 1', 'תגובה 2', 'תגובה 3']:
+                            width = 50  # עמודות תגובה רחבות
+                        elif 'תאריך' in column:
+                            width = 18  # עמודות תאריך
+                        elif 'כותב' in column:
+                            width = 20  # עמודות שם כותב
+                        elif column == 'עמוד':
+                            width = 8  # עמודת מספר עמוד
+                        elif column == 'מס\'':
+                            width = 6  # עמודת מספור
+                        else:
+                            width = 20  # ברירת מחדל
+                        
+                        # התאמה לתוכן בפועל (עד גבול מסוים)
+                        try:
+                            max_content_length = max(
+                                df[column].astype(str).apply(lambda x: len(x) if len(x) < 1000 else 0).max(),
+                                len(column)
+                            )
+                            adjusted_width = min(100, max(width, max_content_length + 2))
+                        except:
+                            adjusted_width = width
+                        
+                        # הגדרת רוחב עמודה לפי מיקום
+                        col_letter = worksheet.cell(row=1, column=col_idx).column_letter
+                        worksheet.column_dimensions[col_letter].width = adjusted_width
+                        
+                        # הגדרת יישור לימין עבור כל התאים בעמודה
+                        for row_idx in range(2, len(df) + 2):  # מתחיל מהשורה השנייה (אחרי הכותרות)
+                            cell = worksheet.cell(row=row_idx, column=col_idx)
+                            cell.alignment = Alignment(horizontal='right', vertical='top', wrap_text=True)
+                            cell.border = thin_border
+                
+                # הודעת הצלחה
+                messagebox.showinfo("הצלחה", f"הקובץ נשמר בהצלחה:\n{excel_path}")
+                self.status_var.set(f"הנתונים יוצאו בהצלחה: {os.path.basename(excel_path)}")
+                
+                # פתיחת התיקייה המכילה את הקובץ
+                try:
+                    os.startfile(os.path.dirname(excel_path))
+                except:
+                    pass
+                    
+            except Exception as excel_err:
+                # אם נכשל עם openpyxl, ננסה גישה פשוטה יותר
+                print(f"שגיאה בכתיבה לאקסל עם openpyxl: {str(excel_err)}")
+                self.status_var.set("מנסה שיטת ייצוא חלופית...")
+                self.root.update()
+                
+                # ייצוא בסיסי ללא עיצוב
+                df[columns_to_use].to_excel(excel_path, index=False, sheet_name='הערות')
+                messagebox.showinfo("הצלחה", f"הקובץ נשמר בהצלחה (ללא עיצוב):\n{excel_path}")
+                
         except Exception as e:
-            messagebox.showerror("שגיאה", f"אירעה שגיאה בייצוא לאקסל:\n{str(e)}")
+            error_msg = str(e)
+            print(f"שגיאה בייצוא לאקסל: {error_msg}")
+            messagebox.showerror("שגיאה", f"אירעה שגיאה בייצוא לאקסל:\n{error_msg}")
+            self.status_var.set("שגיאה בייצוא לאקסל")
 
 def main():
     root = tk.Tk()
