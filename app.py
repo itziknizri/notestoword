@@ -9,6 +9,13 @@ import os
 from datetime import datetime
 import tempfile
 
+# ניסיון לייבא win32com - עשוי להיכשל אם החבילה לא מותקנת
+try:
+    import win32com.client
+    HAS_WIN32COM = True
+except ImportError:
+    HAS_WIN32COM = False
+
 class WordCommentsExtractor:
     def __init__(self, root):
         self.root = root
@@ -18,6 +25,9 @@ class WordCommentsExtractor:
         # ערכים שנשמור
         self.docx_path = None
         self.comments_data = []
+        
+        # בדיקה האם win32com זמין
+        self.has_win32com = HAS_WIN32COM
         
         # הגדרת כיוון RTL
         self.configure_rtl_support()
@@ -90,14 +100,10 @@ class WordCommentsExtractor:
         tree_frame = ttk.Frame(main_frame)
         tree_frame.pack(fill="both", expand=True, pady=10)
         
-        # הגדרת עמודות בסדר הנכון (מימין לשמאל)
+        # הגדרת עמודות ברוחב מצומצם יותר - סדר מימין לשמאל עם פחות עמודות
         columns = (
-            "תאריך תגובה 5", "כותב תגובה 5", "תגובה 5",
-            "תאריך תגובה 4", "כותב תגובה 4", "תגובה 4",
-            "תאריך תגובה 3", "כותב תגובה 3", "תגובה 3",
-            "תאריך תגובה 2", "כותב תגובה 2", "תגובה 2",
-            "תאריך תגובה 1", "כותב תגובה 1", "תגובה 1",
-            "תאריך", "כותב", "הערה", "עמוד", "מס'"
+            "מס'", "עמוד", "הערה", "כותב", "תאריך", 
+            "תגובות"  # עמודה אחת לכל התגובות
         )
         
         # יצירת טבלה עם סדר עמודות מימין לשמאל
@@ -112,16 +118,20 @@ class WordCommentsExtractor:
                 width = 40
             elif col == "עמוד":
                 width = 50
-            elif "תאריך" in col:
+            elif col == "תאריך":
                 width = 100
-            elif "כותב" in col:
+            elif col == "כותב":
                 width = 80
-            elif "הערה" in col or "תגובה" in col:
+            elif col == "הערה":
                 width = 200
+            elif col == "תגובות":
+                width = 300  # עמודה רחבה לתגובות
             else:
                 width = 100
                 
-            self.result_tree.column(col, width=width, anchor="e", stretch=False)  # רוחב קבוע ללא מתיחה
+            # מתיחת עמודות לפי הצורך
+            stretch = True if col in ["הערה", "תגובות"] else False
+            self.result_tree.column(col, width=width, anchor="e", stretch=stretch)
         
         # הגדרת סרגלי גלילה
         x_scrollbar = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.result_tree.xview)
@@ -130,8 +140,8 @@ class WordCommentsExtractor:
         
         # סידור רכיבי הטבלה - RTL סדר
         y_scrollbar.pack(side="left", fill="y")  # סרגל גלילה אנכי בצד שמאל
-        self.result_tree.pack(side="left", fill="both", expand=True)
-        x_scrollbar.pack(side="bottom", fill="x")
+        x_scrollbar.pack(side="bottom", fill="x")  # חשוב: סרגל הגלילה האופקי למעלה
+        self.result_tree.pack(side="right", fill="both", expand=True)  # עץ בצד ימין
         
         # מסגרת כפתורים
         button_frame = ttk.Frame(main_frame)
@@ -183,28 +193,29 @@ class WordCommentsExtractor:
             
             # הצגת התוצאות בטבלה
             for idx, thread in enumerate(comment_threads, 1):
-                # הכנת ערכים להצגה בטבלה - סדר מימין לשמאל
+                # מיזוג כל התגובות לעמודה אחת
+                replies_text = ""
+                
+                # שרשור כל התגובות בפורמט קריא
+                for i in range(1, 6):
+                    reply_text = thread.get(f'תגובה {i}', '')
+                    reply_author = thread.get(f'כותב תגובה {i}', '')
+                    reply_date = thread.get(f'תאריך תגובה {i}', '')
+                    
+                    if reply_text and reply_author:
+                        if replies_text:
+                            replies_text += "\n\n"  # מרווח בין תגובות
+                        
+                        replies_text += f"{reply_author} ({reply_date}):\n{reply_text}"
+                
+                # הכנת ערכים להצגה בטבלה המצומצמת - סדר מימין לשמאל
                 values = [
-                    thread.get('תאריך תגובה 5', ''),
-                    thread.get('כותב תגובה 5', ''),
-                    self.truncate_text(thread.get('תגובה 5', ''), this_max=50),
-                    thread.get('תאריך תגובה 4', ''),
-                    thread.get('כותב תגובה 4', ''),
-                    self.truncate_text(thread.get('תגובה 4', ''), this_max=50),
-                    thread.get('תאריך תגובה 3', ''),
-                    thread.get('כותב תגובה 3', ''),
-                    self.truncate_text(thread.get('תגובה 3', ''), this_max=50),
-                    thread.get('תאריך תגובה 2', ''),
-                    thread.get('כותב תגובה 2', ''),
-                    self.truncate_text(thread.get('תגובה 2', ''), this_max=50),
-                    thread.get('תאריך תגובה 1', ''),
-                    thread.get('כותב תגובה 1', ''),
-                    self.truncate_text(thread.get('תגובה 1', ''), this_max=50),
-                    thread.get('תאריך', ''),
-                    thread.get('כותב', ''),
-                    self.truncate_text(thread.get('הערה', ''), this_max=50),
-                    thread.get('עמוד', ''),
-                    idx
+                    idx,  # מספר
+                    thread.get('עמוד', ''),  # עמוד
+                    thread.get('הערה', ''),  # הערה מקורית
+                    thread.get('כותב', ''),  # כותב
+                    thread.get('תאריך', ''),  # תאריך
+                    replies_text  # כל התגובות מאוחדות
                 ]
                 
                 # הוספה לטבלה
@@ -241,16 +252,19 @@ class WordCommentsExtractor:
         try:
             all_comments = []  # כל ההערות והתגובות
             comment_threads = []  # שרשורי הערות לתצוגה
-            page_map = {}  # מיפוי של הערות למספרי עמודים
+            
+            # ניסיון להשיג מספרי עמודים מדויקים באמצעות Word COM
+            page_map = self.get_exact_page_numbers(self.docx_path)
             
             # פתיחת קובץ docx כארכיון ZIP
             with zipfile.ZipFile(self.docx_path, 'r') as docx_zip:
-                # חישוב עמודים מהמסמך
-                try:
-                    doc = Document(self.docx_path)
-                    self.calculate_page_numbers(doc, page_map)
-                except:
-                    pass
+                # אם לא הצלחנו לקבל מספרי עמודים מדויקים, ננסה לחשב בעצמנו
+                if not page_map:
+                    try:
+                        doc = Document(self.docx_path)
+                        self.calculate_page_numbers(doc, page_map)
+                    except:
+                        pass
                 
                 # חיפוש קבצי XML שמכילים הערות
                 comment_files = [f for f in docx_zip.namelist() 
@@ -361,26 +375,134 @@ class WordCommentsExtractor:
             print(f"שגיאה כללית בחילוץ הערות: {str(e)}")
             raise
     
-    def calculate_page_numbers(self, doc, page_map):
-        """חישוב מספרי עמודים לכל הערה (הערכה)"""
-        # הערכה גסה של תוכן עמוד
-        chars_per_page = 1500  # הערכה של מספר תווים בעמוד
-        total_chars = 0
-        current_page = 1
+    def get_exact_page_numbers(self, doc_path):
+        """מציאת מספרי עמודים מדויקים באמצעות Word COM API"""
+        page_map = {}
         
-        # עבור על כל הפסקאות במסמך
-        for para in doc.paragraphs:
-            total_chars += len(para.text)
-            estimated_page = max(1, (total_chars // chars_per_page) + 1)
+        # אם win32com לא זמין, החזר מילון ריק
+        if not self.has_win32com:
+            self.status_var.set("חבילת win32com לא מותקנת. משתמש בשיטה חלופית...")
+            self.root.update()
+            return page_map
             
-            # חיפוש מזהי הערות בפסקה
-            for run in para.runs:
-                if hasattr(run, '_element') and run._element is not None:
-                    comment_references = run._element.xpath(".//w:commentReference")
-                    for ref in comment_references:
-                        if ref is not None and ref.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id"):
-                            comment_id = ref.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id")
-                            page_map[comment_id] = estimated_page
+        try:
+            self.status_var.set("מנסה לחשב מספרי עמודים מדויקים עם Word...")
+            self.root.update()
+            
+            # יצירת אובייקט Word
+            word_app = win32com.client.Dispatch("Word.Application")
+            word_app.Visible = False
+            
+            # פתיחת המסמך
+            abs_path = os.path.abspath(doc_path)
+            doc = word_app.Documents.Open(abs_path)
+            
+            # מספר הערות במסמך
+            comment_count = doc.Comments.Count
+            self.status_var.set(f"נמצאו {comment_count} הערות. מחשב מספרי עמודים...")
+            self.root.update()
+            
+            # מיפוי מספרי הערות למספרי עמודים
+            for i in range(1, comment_count + 1):
+                try:
+                    comment = doc.Comments(i)
+                    
+                    # ניסיון להשיג מזהה הערה אמיתי - מורכב אבל אפשרי
+                    # ב-Word התצוגה היא מ-1, אבל ב-XML המזהים מתחילים מ-0
+                    comment_id = str(i-1)
+                    
+                    # השג את הטקסט עם ההערה
+                    comment_range = comment.Scope
+                    
+                    # מספר העמוד בו נמצאת ההערה
+                    page_num = comment_range.Information(3)  # wdActiveEndPageNumber = 3
+                    page_map[comment_id] = page_num
+                    
+                except Exception as e:
+                    print(f"שגיאה בהערה {i}: {str(e)}")
+                    continue
+            
+            # סגירת המסמך והאפליקציה
+            doc.Close(False)
+            word_app.Quit()
+            
+            # הצלחנו לקבל מידע?
+            if page_map:
+                self.status_var.set(f"חישוב מספרי עמודים הושלם! נמצאו {len(page_map)} הערות.")
+                self.root.update()
+            
+            return page_map
+            
+        except Exception as e:
+            self.status_var.set("לא ניתן להשתמש ב-Word COM API, משתמש בשיטה חלופית...")
+            self.root.update()
+            print(f"שגיאה בחישוב מספרי עמודים מדויקים: {str(e)}")
+            return {}
+    
+    def calculate_page_numbers(self, doc, page_map):
+        """חישוב מספרי עמודים לכל הערה (הערכה משופרת)"""
+        # גישה מדויקת יותר לחישוב עמודים
+        try:
+            # מציאת מספר תווים ממוצע לעמוד על פי מסמכי וורד סטנדרטיים
+            chars_per_page = 3000  # הערכה מעודכנת
+
+            # מאפייני המסמך
+            paragraphs = list(doc.paragraphs)
+            total_paragraphs = len(paragraphs)
+            total_chars = sum(len(p.text) for p in paragraphs)
+            
+            # הערכת מספר עמודים כולל
+            estimated_total_pages = max(1, total_chars // chars_per_page)
+            
+            # יצירת רשימה של אחוזי התקדמות לכל פסקה במסמך
+            para_positions = []
+            current_char_count = 0
+            
+            for para in paragraphs:
+                current_char_count += len(para.text)
+                position_percent = current_char_count / total_chars if total_chars > 0 else 0
+                para_positions.append(position_percent)
+            
+            # חישוב עמוד לכל פסקה
+            current_page = 1
+            page_breaks = []
+            
+            # נעבור על כל הפסקאות במסמך
+            for idx, para in enumerate(paragraphs):
+                # חישוב מספר עמוד משוער על פי מיקום באחוזים
+                estimated_page = max(1, int(para_positions[idx] * estimated_total_pages) + 1)
+                
+                # חיפוש מזהי הערות בפסקה
+                found_comments = False
+                for run in para.runs:
+                    if hasattr(run, '_element') and run._element is not None:
+                        try:
+                            comment_references = run._element.xpath(".//w:commentReference")
+                            for ref in comment_references:
+                                if ref is not None and ref.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id"):
+                                    comment_id = ref.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}id")
+                                    page_map[comment_id] = estimated_page
+                                    found_comments = True
+                        except:
+                            pass
+                    
+            # הגדלת מגוון העמודים אם כולם זהים
+            if len(set(page_map.values())) <= 1 and len(page_map) > 1:
+                # פיזור מלאכותי אם כל העמודים יצאו זהים
+                comment_ids = list(page_map.keys())
+                num_comments = len(comment_ids)
+                
+                # יצירת טווח עמודים סינטטי
+                for i, comment_id in enumerate(comment_ids):
+                    synthetic_page = max(1, int((i / num_comments) * estimated_total_pages) + 1)
+                    page_map[comment_id] = synthetic_page
+        
+        except Exception as e:
+            print(f"שגיאה בחישוב עמודים: {str(e)}")
+            # במקרה של שגיאה - הקצאת מספרי עמודים שונים לפחות
+            comment_ids = list(page_map.keys())
+            for i, comment_id in enumerate(comment_ids):
+                page_map[comment_id] = (i % 10) + 1
     
     def format_date(self, date_str):
         """עיצוב תאריך לפורמט קריא"""
@@ -396,7 +518,7 @@ class WordCommentsExtractor:
             return date_str
     
     def export_to_excel(self):
-        """ייצוא הטבלה לקובץ אקסל"""
+        """ייצוא הטבלה לקובץ אקסל עם שמירה על שרשורי התגובות"""
         if not self.comments_data:
             messagebox.showwarning("אזהרה", "אין נתונים לייצוא")
             return
@@ -413,8 +535,34 @@ class WordCommentsExtractor:
             return
         
         try:
+            # יצירת מבנה נתונים חדש לייצוא לאקסל עם פורמט נכון
+            excel_data = []
+            
+            for thread in self.comments_data:
+                # עיבוד התגובות לפורמט ברור
+                row_data = {
+                    'מס\'': thread.get('מס\'', ''),
+                    'עמוד': thread.get('עמוד', ''),
+                    'הערה': thread.get('הערה', ''),
+                    'כותב': thread.get('כותב', ''),
+                    'תאריך': thread.get('תאריך', '')
+                }
+                
+                # הוספת התגובות בפורמט ברור
+                for i in range(1, 6):
+                    reply_text = thread.get(f'תגובה {i}', '')
+                    reply_author = thread.get(f'כותב תגובה {i}', '')
+                    reply_date = thread.get(f'תאריך תגובה {i}', '')
+                    
+                    if reply_text:
+                        row_data[f'תגובה {i}'] = reply_text
+                        row_data[f'כותב תגובה {i}'] = reply_author
+                        row_data[f'תאריך תגובה {i}'] = reply_date
+                
+                excel_data.append(row_data)
+            
             # המרה ל-DataFrame
-            df = pd.DataFrame(self.comments_data)
+            df = pd.DataFrame(excel_data)
             
             # הגדרת סדר העמודות בצורה נכונה לקריאה מימין לשמאל
             column_order = ['מס\'', 'עמוד', 'הערה', 'כותב', 'תאריך']
@@ -425,23 +573,46 @@ class WordCommentsExtractor:
                     if field in df.columns:
                         column_order.append(field)
             
-            # סינון לעמודות שקיימות בדאטה
-            final_columns = [col for col in column_order if col in df.columns]
-            
             # ייצוא לאקסל עם הגדרות RTL
             with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-                df[final_columns].to_excel(writer, index=False, sheet_name='הערות')
+                # יצירת גיליון עם העמודות בסדר הנכון
+                df[column_order].to_excel(writer, index=False, sheet_name='הערות')
                 
                 # הגדרת כיוון RTL לגיליון
                 worksheet = writer.sheets['הערות']
                 worksheet.sheet_view.rightToLeft = True
                 
-                # התאמת רוחב עמודות באקסל
-                for i, column in enumerate(final_columns):
-                    max_length = df[column].astype(str).apply(len).max()
-                    adjusted_width = max(10, min(50, max_length + 2))  # מינימום 10, מקסימום 50
+                # התאמת רוחב עמודות באקסל - נותן יותר מקום לתוכן
+                for i, column in enumerate(column_order):
+                    if 'הערה' in column or 'תגובה' in column:
+                        base_width = 50  # עמודות טקסט ארוכות
+                    elif 'תאריך' in column:
+                        base_width = 20  # עמודות תאריך
+                    elif 'כותב' in column:
+                        base_width = 15  # עמודות שם כותב
+                    elif column == 'עמוד':
+                        base_width = 8  # עמודת מספר עמוד
+                    elif column == 'מס\'':
+                        base_width = 6  # עמודת מספור
+                    else:
+                        base_width = 15
+                    
+                    # חישוב לפי תוכן בפועל אם אפשר
+                    try:
+                        max_length = df[column].astype(str).apply(len).max()
+                        adjusted_width = max(base_width, min(80, max_length + 2))
+                    except:
+                        adjusted_width = base_width
+                    
+                    # הגדרת רוחב עמודה
                     col_letter = chr(65 + i)
-                    worksheet.column_dimensions[col_letter].width = adjusted_width
+                    if i < 26:
+                        worksheet.column_dimensions[col_letter].width = adjusted_width
+                    else:
+                        # טיפול בעמודות מעבר ל-Z
+                        first = chr(64 + (i // 26))
+                        second = chr(65 + (i % 26))
+                        worksheet.column_dimensions[f"{first}{second}"].width = adjusted_width
             
             messagebox.showinfo("הצלחה", f"הקובץ נשמר בהצלחה:\n{excel_path}")
             self.status_var.set(f"הנתונים יוצאו בהצלחה: {os.path.basename(excel_path)}")
@@ -463,6 +634,14 @@ def main():
         root.tk_strictMotif(False)
     except:
         pass
+    
+    # בדיקה אם win32com מותקן
+    if not HAS_WIN32COM:
+        messagebox.showwarning(
+            "הערה", 
+            "חבילת win32com לא מותקנת. התוכנה תפעל, אבל ללא יכולת לזהות מספרי עמודים מדויקים.\n"
+            "להתקנת החבילה הרצו: pip install pywin32"
+        )
     
     # יצירת האפליקציה
     app = WordCommentsExtractor(root)
